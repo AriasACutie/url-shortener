@@ -1,28 +1,33 @@
-const express = require('express');
-const cors = require('cors');
-const shortid = require('shortid');
-const app = express();
+const { v4: uuidv4 } = require('uuid');
+const urls = new Map();
 
-app.use(cors());
-app.use(express.json());
+module.exports = (req, res) => {
+    if (req.method === 'POST') {
+        let body = '';
 
-let urls = {};
+        req.on('data', chunk => {
+            body += chunk.toString(); // convert Buffer to string
+        });
 
-app.post('/shorten', (req, res) => {
-    const { url } = req.body;
-    const id = shortid.generate();
-    urls[id] = url;
-    res.send({ id });
-});
+        req.on('end', () => {
+            const { url } = JSON.parse(body);
+            const id = uuidv4().slice(0, 8); // Generate a short id
+            urls.set(id, url); // Store the URL with id as the key
+            res.end(JSON.stringify({ id, shortUrl: `https://${req.headers.host}/${id}` }));
+        });
+    } else if (req.method === 'GET') {
+        const id = req.url.slice(1); // Remove the '/' from the URL path
+        const url = urls.get(id);
 
-app.get('/:id', (req, res) => {
-    const { id } = req.params;
-    const url = urls[id];
-    if (url) {
-        res.redirect(url);
+        if (url) {
+            res.writeHead(302, { Location: url });
+            res.end();
+        } else {
+            res.writeHead(404);
+            res.end('URL not found');
+        }
     } else {
-        res.sendStatus(404);
+        res.writeHead(405);
+        res.end(`${req.method} is not allowed.`);
     }
-});
-
-module.exports = app;
+};
